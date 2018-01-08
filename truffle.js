@@ -1,3 +1,5 @@
+////// geth --datadir=$HOME/.rinkeby attach ipc:$HOME/Library/Ethereum/rinkeby/geth.ipc console
+
 module.exports = {
   networks: {
       /*kovan: {
@@ -11,7 +13,7 @@ module.exports = {
       port: 8545,
       network_id: "*" // Match any network id
     }
-      /*rinkeby: {
+     /* rinkeby: {
           host: "localhost", // Connect to geth on the specified
           port: 8545,
           network_id: 4,
