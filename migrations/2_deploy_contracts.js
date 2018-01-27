@@ -6,12 +6,19 @@ var contributorWhitelist = artifacts.require("./ContributorWhitelist.sol");
 var tokenSaleSmartContract = artifacts.require("./TokenSaleSmartContract.sol");
 var tokenSmartContract = artifacts.require("./TokenSmartContract.sol");
 
+var unitAmount = 1000;
+var startTime = Math.floor(Date.now() / 1000) +  60;
+var endtime = Math.floor(Date.now() / 1000) +  60*60*24;
+var admin="0x0fc339d948a258ab986b71ef7fd78530a824d63a";
+
 module.exports = function(deployer) {
   /*deployer.deploy(ConvertLib);
   deployer.link(ConvertLib, MetaCoin);
   deployer.deploy(MetaCoin);*/
 
-  deployer.deploy(contributorWhitelist);
+  deployer.deploy(tokenSmartContract,unitAmount, startTime, endtime, admin);
+
+ /// deployer.deploy(contributorWhitelist);
 
   /*
 
