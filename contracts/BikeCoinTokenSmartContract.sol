@@ -3,18 +3,19 @@ pragma solidity ^0.4.0;
 import './zeppelin/token/StandardToken.sol';
 import './zeppelin/ownership/Ownable.sol';
 
-contract TokenSmartContract is StandardToken, Ownable {
-    string  public  constant name = "Token Name";
-    string  public  constant symbol = "TN"; // short name
+contract BikeCoinTokenSmartContract is StandardToken, Ownable {
+    string  public  constant name = "BIKECOIN";
+    string  public  constant symbol = "BKC";
     uint    public  constant decimals = 18;
 
     uint    public  saleStartTime;
     uint    public  saleEndTime;
+    uint    public lockedDays = 0;
 
     address public  tokenSaleContract;
 
     modifier onlyWhenTransferEnabled() {
-        if( now <= saleEndTime && now >= saleStartTime ) {
+        if( now <= (saleEndTime + lockedDays * 1 days) && now >= saleStartTime ) {
             require( msg.sender == tokenSaleContract );
         }
         _;
@@ -26,7 +27,7 @@ contract TokenSmartContract is StandardToken, Ownable {
         _;
     }
 
-    function TokenSmartContract( uint tokenTotalAmount, uint startTime, uint endTime, address admin ) {
+    function BikeCoinTokenSmartContract( uint tokenTotalAmount, uint startTime, uint endTime, uint lockedTime, address admin ) {
         // Mint all tokens. Then disable minting forever.
         balances[msg.sender] = tokenTotalAmount;
         totalSupply = tokenTotalAmount;
@@ -34,6 +35,7 @@ contract TokenSmartContract is StandardToken, Ownable {
 
         saleStartTime = startTime;
         saleEndTime = endTime;
+        lockedDays = lockedTime;
 
         tokenSaleContract = msg.sender;
         transferOwnership(admin); // admin could drain tokens that were sent here by mistake
@@ -64,12 +66,6 @@ contract TokenSmartContract is StandardToken, Ownable {
         return true;
     }
 
-    // save some gas by making only one contract call
-    function burnFrom(address _from, uint256 _value) onlyWhenTransferEnabled
-    returns (bool) {
-        assert( transferFrom( _from, msg.sender, _value ) );
-        return burn(_value);
-    }
 
     function emergencyERC20Drain( ERC20 token, uint amount ) onlyOwner {
         token.transfer( owner, amount );

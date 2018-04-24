@@ -1,10 +1,7 @@
-/**
- * Created by tuongbui on 23/12/17.
- */
 
-var Token = artifacts.require("./TokenSmartContract.sol");
+var Token = artifacts.require("./ElecTokenSmartContract.sol");
 var BigNumber = require('bignumber.js');
-var Helpers = require('./../helpers.js');
+var Helpers = require('./helpers.js');
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -15,10 +12,9 @@ var saleEndTime;
 var tokenOwner;
 var tokenAdmin;
 
-var tokenOwnerAccount;
-var nonOwnerAccount;
+var lockedDay = 0;
 
-var totalSupply = web3.toWei( new BigNumber(226000000), "ether" );
+var totalSupply = web3.toWei( new BigNumber(200000000), "ether" );
 
 
 var erc20TokenContract;
@@ -34,58 +30,74 @@ contract('token contract', function(accounts) {
         done();
     });
 
+   
+
     it("mine one block to get current time", function() {
         return Helpers.sendPromise( 'evm_mine', [] );
     });
 
+
+    /// test for deploy token
     it("deploy token and init accounts", function() {
         tokenOwner = accounts[0];
         tokenAdmin = accounts[1];
 
         var currentTime = web3.eth.getBlock('latest').timestamp;
 
-        saleStartTime = currentTime + 3600; // 1 hour from now
-        saleEndTime = saleStartTime + 24 * 60 * 60; // 24 hours sale
+        saleStartTime = currentTime + 120;
+        saleEndTime = saleStartTime + 28800;
 
-        return Token.new(totalSupply, saleStartTime,saleEndTime, tokenAdmin, {from: tokenOwner}).then(function(result){
+        // deploy a ELEC token
+        return Token.new(totalSupply, saleStartTime,saleEndTime, lockedDay, tokenAdmin, {from: tokenOwner}).then(function(result){
             tokenContract = result;
 
-            // check total supply
+            // return totalSupply of contract
             return tokenContract.totalSupply();
         }).then(function(result){
-            assert.equal(result.valueOf(), totalSupply.valueOf(), "unexpected total supply");
+            // check total supply of token smart contract
+            assert.equal(result.valueOf(), totalSupply.valueOf(), "total supply are incorrect");
 
             // check that owner gets all supply
             return tokenContract.balanceOf(tokenOwner);
         }).then(function(result){
-            assert.equal(result.valueOf(), totalSupply.valueOf(), "unexpected owner balance");
+
+            //check that Owner will hold all tokens
+            assert.equal(result.valueOf(), totalSupply.valueOf(), "Owner balance are incorrect");
         });
     });
 
-    it("transfer before token sale", function() {
+    // owner is able to transfer token before token sale
+    it("transfer before token sale by token owner account", function() {
         var value = new BigNumber(5);
         return tokenContract.transfer(accounts[2], value, {from:tokenOwner}).then(function(){
-            // get balances
+            // get balances of token owner
             return tokenContract.balanceOf(tokenOwner);
         }).then(function(result){
-            assert.equal(result.valueOf(), totalSupply.minus(value).valueOf(), "unexpected balance");
+            ///  check balance of Token Owner after transferring successfully
+            assert.equal(result.valueOf(), totalSupply.minus(value).valueOf(), "Balance of token owner is incorrect ");
             return tokenContract.balanceOf(accounts[2]);
-        }).then(function(result){
-            assert.equal(result.valueOf(), value.valueOf(), "unexpected balance");
-        });
-    });
 
+        }).then(function(result){
+            /// check balance of Receiver account
+            assert.equal(result.valueOf(), value.valueOf(), "Balance of Received account is incorrect");
+        });
+    })
+
+
+    /// increase time of chain to make token sale happen
     it("fast forward to token sale", function() {
         var fastForwardTime = saleStartTime - web3.eth.getBlock('latest').timestamp + 1;
         return Helpers.sendPromise( 'evm_increaseTime', [fastForwardTime] ).then(function(){
             return Helpers.sendPromise( 'evm_mine', [] ).then(function(){
                 var currentTime = web3.eth.getBlock('latest').timestamp;
-                if( currentTime <= saleStartTime ) assert.fail( "current time is not as expected" );
+                if( currentTime <= saleStartTime ) assert.fail( "current time is not in a token sale period" );
             });
         });
     });
 
-    it("transfer from owner in token sale", function() {
+
+    /// owner is able to transfer token during crowdsale
+    it("transfer from owner during crowdsale period", function() {
         var value = new BigNumber(5);
         return tokenContract.transfer(accounts[2], value, {from:tokenOwner}).then(function(){
             // get balances
@@ -98,182 +110,160 @@ contract('token contract', function(accounts) {
         });
     });
 
-    it("transfer from non owner in token sale", function() {
+    /// admin is not able to transfer token during token sale
+    it("fail Transfer from non owner during crowdsale period", function() {
         var value = new BigNumber(5);
+        // transfer token by admin account - accounts[1]
         return tokenContract.transfer(accounts[1], value, {from:accounts[2]}).then(function(){
             assert.fail("transfer is during sale is expected to fail");
         }).catch(function(error){
-            assert( Helpers.throwErrorMessage(error), "expected throw got " + error);
+           // assert.isAbove(error.message.search('revert'), -1, 'Revert opcode error must be returned');
+           assert(Helpers.throwErrorMessage(error), "expected error" + error);
+
         });
     });
 
-    it("transferfrom non owner in token sale", function() {
+    /// non-onwner is not able to transfer token during token sale
+    it("fail TransferFrom non owner during crowdsale", function() {
         var value = new BigNumber(5);
+        /// transfer token from normal account
         return tokenContract.approve(accounts[5], value, {from:accounts[2]}).then(function(){
             return tokenContract.transferFrom(accounts[2],accounts[3],value,{from:accounts[5]});
         }).then(function(){
-            assert.fail("transfer from should fail in token sale");
+            assert.fail("normal account is failed to transfer token during crowdsale perdiod");
         }).catch(function(error){
-            assert( Helpers.throwErrorMessage(error), "expected throw got " + error);
+          //  assert.isAbove(error.message.search('revert'), -1, 'Revert opcode error must be returned');
+            assert(Helpers.throwErrorMessage(error), "expected error" + error);
             // revert approve
             return tokenContract.approve(accounts[5], new BigNumber(0), {from:accounts[2]});
         });
     });
 
+    ///increase block timestamp to end crowdsale
     it("fast forward to token sale end", function() {
         var fastForwardTime = saleEndTime - web3.eth.getBlock('latest').timestamp + 1;
         return Helpers.sendPromise( 'evm_increaseTime', [fastForwardTime] ).then(function(){
             return Helpers.sendPromise( 'evm_mine', [] ).then(function(){
                 var currentTime = web3.eth.getBlock('latest').timestamp;
-                if( currentTime <= saleEndTime ) assert.fail( "current time is not as expected" );
+                if( currentTime <= saleEndTime ) assert.fail( "current time is earlier than endsale time" );
             });
         });
     });
 
+    /// owner can transfer token to a normal
     it("transfer from owner in token sale", function() {
-        var value = new BigNumber(100);
+        var value = new BigNumber(150);
         return tokenContract.transfer(accounts[7], value, {from:tokenOwner});
     });
 
-    it("transfer more than balance", function() {
-        var value = new BigNumber(101);
+    /// normal account transfer more than balance
+    it("failed transfer more than balance", function() {
+        var value = new BigNumber(160);
         return tokenContract.transfer(accounts[8], value, {from:accounts[7]}).then(function(){
             assert.fail("transfer should fail");
         }).catch(function(error){
-            assert( Helpers.throwErrorMessage(error), "expected throw got " + error);
+           assert( Helpers.throwErrorMessage(error), "expected error" + error);
+            //assert.isAbove(error.message.search('revert'), -1, 'Revert opcode error must be returned');
         });
     });
 
-    it("transfer to address 0", function() {
-        var value = new BigNumber(1);
+    /// failed to transfer token to address 0
+    it("failed transfer to address 0", function() {
+        var value = new BigNumber(20);
         return tokenContract.transfer("0x0000000000000000000000000000000000000000", value, {from:accounts[7]}).then(function(){
             assert.fail("transfer should fail");
         }).catch(function(error){
-            assert( Helpers.throwErrorMessage(error), "expected throw got " + error);
+            assert( Helpers.throwErrorMessage(error),  "expected error" + error);
+           // assert.isAbove(error.message.search('revert'), -1, 'Revert opcode error must be returned');
         });
     });
 
-    it("transfer to token contract", function() {
-        var value = new BigNumber(1);
+    /// failed to transfer token to token smart contract
+    it("failed transfer to token contract", function() {
+        var value = new BigNumber(10);
         return tokenContract.transfer(tokenContract.address, value, {from:accounts[7]}).then(function(){
             assert.fail("transfer should fail");
         }).catch(function(error){
-            assert( Helpers.throwErrorMessage(error), "expected throw got " + error);
+             assert( Helpers.throwErrorMessage(error), "expected error" + error);
+           // assert.isAbove(error.message.search('revert'), -1, 'Revert opcode error must be returned');
         });
     });
 
-    it("transfer - see that balance changes", function() {
+    /// transfer from normal account to another normal account
+    it("transfer token successfullly between user after crowd sale", function() {
         var value = new BigNumber(60);
         return tokenContract.transfer(accounts[8], value, {from:accounts[7]}).then(function(){
             return tokenContract.balanceOf(accounts[7]);
         }).then(function(result){
-            assert.equal(result.valueOf(), new BigNumber(40).valueOf(), "unexpected balance");
+            assert.equal(result.valueOf(), new BigNumber(90).valueOf(), "balance of From Account is incorrect");
             return tokenContract.balanceOf(accounts[8]);
         }).then(function(result){
-            assert.equal(result.valueOf(), new BigNumber(60).valueOf(), "unexpected balance");
+            assert.equal(result.valueOf(), new BigNumber(60).valueOf(), "balance of To Account is incorrect");
         });
     });
 
-    it("approve more than balance", function() {
-        var value = new BigNumber(180);
+    /// allow to approve more than user's balance
+    it("allow to approve more than balance", function() {
+        var value = new BigNumber(150);
         return tokenContract.approve(accounts[9], value, {from:accounts[8]}).then(function(){
             return tokenContract.allowance(accounts[8],accounts[9]);
         }).then(function(result){
-            assert.equal(result.valueOf(), value.valueOf(), "unexpected allowance");
+            assert.equal(result.valueOf(), value.valueOf(), "failed to approve more than balance");
         });
     });
 
+    /// failed to on behalf of user to transfer more than balance
     it("transferfrom more than balance", function() {
-        var value = new BigNumber(180);
+        var value = new BigNumber(140);
         return tokenContract.transferFrom(accounts[8], accounts[7], value, {from:accounts[9]}).then(function(){
             assert.fail("transfer should fail");
         }).catch(function(error){
-            assert( Helpers.throwErrorMessage(error), "expected throw got " + error);
+            assert( Helpers.throwErrorMessage(error), "expected error" + error);
         });
     });
 
-    it("transferfrom to address 0", function() {
+    // failed to transfer From normal account to address 0
+    it(" failed transferfrom to address 0", function() {
         var value = new BigNumber(10);
         return tokenContract.transferFrom(accounts[8], "0x0000000000000000000000000000000000000000", value, {from:accounts[9]}).then(function(){
             assert.fail("transfer should fail");
         }).catch(function(error){
-            assert( Helpers.throwErrorMessage(error), "expected throw got " + error);
+            assert(Helpers.throwErrorMessage(error), "expected error" + error);
+          //  assert.isAbove(error.message.search('revert'), -1, 'Revert opcode error must be returned');
         });
     });
 
-    it("transferfrom to token contract", function() {
+    /// failed to on behalf of user to transfer to token smart contract
+    it("failed transferfrom to token contract", function() {
         var value = new BigNumber(10);
         return tokenContract.transferFrom(accounts[8], tokenContract.address, value, {from:accounts[9]}).then(function(){
             assert.fail("transfer should fail");
         }).catch(function(error){
-            assert( Helpers.throwErrorMessage(error), "expected throw got " + error);
+            assert(Helpers.throwErrorMessage(error), "expected error" + error);
+            //assert.isAbove(error.message.search('revert'), -1, 'Revert opcode error must be returned');
         });
     });
 
+    /// on behalf of one account, to transfer token to other user
     it("transferfrom", function() {
         var value = new BigNumber(10);
         return tokenContract.transferFrom(accounts[8], accounts[6], value, {from:accounts[9]}).then(function(){
             // check balance was changed
             return tokenContract.balanceOf(accounts[6]);
         }).then(function(result){
-            assert.equal(result.valueOf(), value.valueOf(), "unexpected balance");
+            assert.equal(result.valueOf(), value.valueOf(), "receiver didn't got token");
             return tokenContract.balanceOf(accounts[8]);
         }).then(function(result){
-            assert.equal(result.valueOf(), (new BigNumber(50)).valueOf(), "unexpected balance");
+            assert.equal(result.valueOf(), (new BigNumber(50)).valueOf(), "balance of sender didn't change correct");
 
             // check allwance was changed
             return tokenContract.allowance(accounts[8],accounts[9]);
         }).then(function(result){
-            assert.equal(result.valueOf(), (new BigNumber(170)).valueOf(), "unexpected allowance");
+            assert.equal(result.valueOf(), (new BigNumber(140)).valueOf(), "allowance of user 9 from sender didn't change");
         });
     });
 
 
-    it("burn - see that balance and total supply changes", function() {
-        var value = new BigNumber(4);
-        return tokenContract.burn(value, {from:accounts[6]}).then(function(){
-            return tokenContract.balanceOf(accounts[6]);
-        }).then(function(result){
-            assert.equal(result.valueOf(), new BigNumber(6).valueOf(), "unexpected balance");
-            // check total supply
-            return tokenContract.totalSupply();
-        }).then(function(result){
-            assert.equal(result.valueOf(), (totalSupply.minus(value)).valueOf(), "unexpected balance");
-            totalSupply = totalSupply.minus(value);
-        });
-    });
-
-    it("burn - burn more than balance should fail", function() {
-        var value = new BigNumber(14);
-        return tokenContract.burn(value, {from:accounts[6]}).then(function(){
-            assert.fail("burn should fail");
-        }).catch(function(error){
-            assert( Helpers.throwErrorMessage(error), "expected throw got " + error);
-        });
-    });
-
-    it("transfer from owner in token sale", function() {
-        var value = new BigNumber(100);
-        return tokenContract.transfer(accounts[5], value, {from:tokenOwner});
-    });
-
-    it("burn from", function() {
-        var value = new BigNumber(50);
-        return tokenContract.approve(accounts[3], value, {from:accounts[5]}).then(function(){
-            return tokenContract.burnFrom(accounts[5], value, {from:accounts[3]});
-        }).then(function(){
-            // check accounts[5] balance was reduced
-            return tokenContract.balanceOf(accounts[5]);
-        }).then(function(result){
-            assert.equal(result.valueOf(), (new BigNumber(50)).valueOf(), "unexpected balance");
-
-            // check total supply was reduced
-            return tokenContract.totalSupply();
-        }).then(function(result){
-            assert.equal(result.valueOf(), totalSupply.minus(50), "unexpected total supply");
-            totalSupply = totalSupply.minus(50);
-        });
-    });
 
     it("deploy another token and send it to token contract", function() {
         tokenOwner = accounts[0];
@@ -281,10 +271,10 @@ contract('token contract', function(accounts) {
 
         var currentTime = web3.eth.getBlock('latest').timestamp;
 
-        saleStartTime = currentTime + 3600; // 1 hour from now
-        saleEndTime = saleStartTime + 24 * 60 * 60; // 24 hours sale
+        saleStartTime = currentTime + 120;
+        saleEndTime = saleStartTime + 288000;
 
-        return Token.new(totalSupply, saleStartTime,saleEndTime, tokenAdmin, {from: tokenOwner}).then(function(result){
+        return Token.new(totalSupply, saleStartTime,saleEndTime, lockedDay, tokenAdmin, {from: tokenOwner}).then(function(result){
             tokenContract = result;
 
             // check total supply
@@ -305,49 +295,44 @@ contract('token contract', function(accounts) {
         return Helpers.sendPromise( 'evm_mine', [] );
     });
 
-    it("deploy token and init accounts", function() {
+    /// token contract receive other tokens except Elec Token
+    it("deploy a new ERC20 token and transfer it to Elect Token Smart Contract", function() {
         var currentTime = web3.eth.getBlock('latest').timestamp;
 
-        saleStartTime = currentTime + 3600; // 1 hour from now
-        saleEndTime = saleStartTime + 24 * 60 * 60; // 24 hours sale
+        saleStartTime = currentTime + 120;
+        saleEndTime = saleStartTime + 288000;
 
-        return Token.new(totalSupply, saleStartTime,saleEndTime, tokenAdmin, {from: accounts[5]}).then(function(result){
+        return Token.new(totalSupply, saleStartTime,saleEndTime, lockedDay, tokenAdmin, {from: accounts[5]}).then(function(result){
             erc20TokenContract = result;
-            return erc20TokenContract.transfer(tokenContract.address,new BigNumber(1),{from:accounts[5]});
+            return erc20TokenContract.transfer(tokenContract.address,new BigNumber(100),{from:accounts[5]});
         }).then(function(){
             // check balance
             return erc20TokenContract.balanceOf(tokenContract.address);
         }).then(function(result){
-            assert.equal(result.valueOf(),(new BigNumber(1)).valueOf(), "unexpected balance" );
+            assert.equal(result.valueOf(),(new BigNumber(100)).valueOf(), "Elect token is failed to receive other ERC20 tokens" );
         });
     });
 
-    it("try to drain contract from non-admin address", function() {
-        return tokenContract.emergencyERC20Drain( erc20TokenContract.address, new BigNumber(1), {from:tokenOwner}).then(function(result){
+    /// failed to drain token from token contract by non-admin account
+    it("non-admin account failed to drain a token from the contract", function() {
+        return tokenContract.emergencyERC20Drain( erc20TokenContract.address, new BigNumber(100), {from:tokenOwner}).then(function(result){
         }).then(function(){
             assert.fail("burn should fail");
         }).catch(function(error){
-            assert( Helpers.throwErrorMessage(error), "expected throw got " + error);
+            assert( Helpers.throwErrorMessage(error), "expected error" + error);
+           // assert.isAbove(error.message.search('revert'), -1, 'Revert opcode error must be returned');
         });
     });
 
-    it("try to drain contract from admin address", function() {
-        return tokenContract.emergencyERC20Drain( erc20TokenContract.address, new BigNumber(1), {from:tokenAdmin}).then(function(result){
+    /// admin account drain token from token SmartContract
+    it("admin account drain token from token address", function() {
+        return tokenContract.emergencyERC20Drain( erc20TokenContract.address, new BigNumber(100), {from:tokenAdmin}).then(function(result){
         }).then(function(){
             return erc20TokenContract.balanceOf(tokenAdmin);
         }).then(function(result){
-            assert.equal(result.valueOf(), (new BigNumber(1)).valueOf(), "unexpected admin balance");
+            assert.equal(result.valueOf(), (new BigNumber(100)).valueOf(), "Admin didn't get token successfully");
         });
     });
-
-
-
-// TODO - check drain
-
-
-    erc20TokenContract
-
-
 
 });
 

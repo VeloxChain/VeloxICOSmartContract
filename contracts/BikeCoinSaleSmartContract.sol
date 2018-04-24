@@ -1,73 +1,88 @@
 pragma solidity ^0.4.0;
 
-import './TokenSmartContract.sol';
-import './ContributorApprover.sol';
-import './ContributorWhitelist.sol';
+import './BikeCoinTokenSmartContract.sol';
+import './BikeCoinApprover.sol';
+import './BikeCoinWhitelist.sol';
 
-contract TokenSaleSmartContract is ContributorApprover{
+contract BikeCoinSaleSmartContract is BikeCoinApprover{
     address             public admin;
     address             public multiSigWallet; // can be a single wallet
-    TokenSmartContract public token;
+    BikeCoinSmartContract public token;
     uint                public raisedWei;
     bool                public haltSale;
+    uint                constant toWei = (10**18);
+    uint                public minCap = toWei.div(2);
 
     mapping(bytes32=>uint) public proxyPurchases;
 
-    function TokenSaleSmartContract( address _admin,
+    function BikeCoinSaleSmartContract( address _admin,
     address _multiSigWallet,
-    ContributorWhitelist _whilteListContract,
+    BikeCoinWhitelist _whiteListContract,
     uint _totalTokenSupply,
-    uint _premintedTokenSupply,
-    uint _cappedSaleStartTime,
-    uint _publicSaleStartTime,
-    uint _publicSaleEndTime )
+    uint _companyTokenSupply,
+    uint _saleStartTime,
+    uint _firstRoundTime,
+    uint _saleEndTime,
+    uint _lockedDays)
 
-    ContributorApprover( _whilteListContract,
-    _cappedSaleStartTime,
-    _publicSaleStartTime,
-    _publicSaleEndTime )
+    public
+
+    BikeCoinApprover( _whiteListContract,
+    _saleStartTime,
+    _firstRoundTime,
+    _saleEndTime )
     {
         admin = _admin;
         multiSigWallet = _multiSigWallet;
 
-        token = new TokenSmartContract( _totalTokenSupply,
-        _cappedSaleStartTime,
-        _publicSaleEndTime + 7 days, /// 7 can changed depending on each project
+        token = new BikeCoinTokenSmartContract( _totalTokenSupply,
+        _saleStartTime,
+        _saleEndTime,
+        _lockedDays, ///change depending on each project
         _admin );
 
         // transfer preminted tokens to company wallet
-        token.transfer( multiSigWallet, _premintedTokenSupply );
+        token.transfer( multiSigWallet, _companyTokenSupply );
     }
 
-    function setHaltSale( bool halt ) {
+    function setHaltSale( bool halt ) public {
         require( msg.sender == admin );
         haltSale = halt;
     }
 
-    function() payable {
+    function() public payable {
         buy( msg.sender );
     }
 
     event ProxyBuy( bytes32 indexed _proxy, address _recipient, uint _amountInWei );
-    function proxyBuy( bytes32 proxy, address recipient ) payable returns(uint){
+    function proxyBuy( bytes32 proxy, address recipient ) public payable returns(uint){
         uint amount = buy( recipient );
         proxyPurchases[proxy] = proxyPurchases[proxy].add(amount);
         ProxyBuy( proxy, recipient, amount );
+
 
         return amount;
     }
 
     event Buy( address _buyer, uint _tokens, uint _payedWei );
-    function buy( address recipient ) payable returns(uint){
+    function buy( address recipient ) public payable returns(uint){
         require( tx.gasprice <= 50000000000 wei );
 
         require( ! haltSale );
         require( saleStarted() );
         require( ! saleEnded() );
 
+        // check min buy at least 0.5 ETH;
+        uint weiContributedCap = contributedInternalCap(recipient);
+
+        if (weiContributedCap == 0 ) require( msg.value >= minCap);
+
+
+
         uint weiPayment = eligibleTestAndIncrement( recipient, msg.value );
 
         require( weiPayment > 0 );
+
 
         // send to msg.sender, not to recipient
         if( msg.value > weiPayment ) {
@@ -77,7 +92,7 @@ contract TokenSaleSmartContract is ContributorApprover{
         // send payment to wallet
         sendETHToMultiSig( weiPayment );
         raisedWei = raisedWei.add( weiPayment );
-        uint recievedTokens = weiPayment.mul( 600 );
+        uint recievedTokens = weiPayment.mul( 5000 );
 
         assert( token.transfer( recipient, recievedTokens ) );
 
@@ -93,7 +108,7 @@ contract TokenSaleSmartContract is ContributorApprover{
 
     event FinalizeSale();
     // function is callable by everyone
-    function finalizeSale() {
+    function finalizeSale() public {
         require( saleEnded() );
         require( msg.sender == admin );
 
@@ -105,7 +120,7 @@ contract TokenSaleSmartContract is ContributorApprover{
 
     // ETH balance is always expected to be 0.
     // but in case something went wrong, we use this function to extract the eth.
-    function emergencyDrain(ERC20 anyToken) returns(bool){
+    function emergencyDrain(ERC20 anyToken) public returns(bool){
         require( msg.sender == admin );
         require( saleEnded() );
 
@@ -122,8 +137,8 @@ contract TokenSaleSmartContract is ContributorApprover{
 
     // just to check that funds goes to the right place
     // tokens are not given in return
-    function debugBuy() payable {
+    /*function debugBuy() public payable {
         require( msg.value == 123 );
         sendETHToMultiSig( msg.value );
-    }
+    }*/
 }

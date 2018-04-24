@@ -1,6 +1,4 @@
-/**
- * Created by tuongbui on 23/12/17.
- */
+
 var BigNumber = require('bignumber.js');
 
 var m_w = 123456789;

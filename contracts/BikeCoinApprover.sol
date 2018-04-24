@@ -1,11 +1,11 @@
 pragma solidity ^0.4.0;
 
 import './zeppelin/ownership/Ownable.sol';
-import './ElecWhitelist.sol';
+import './BikeCoinWhitelist.sol';
 import './zeppelin/math/SafeMath.sol';
 
-contract ElecApprover {
-    ElecWhitelist public list;
+contract BikeCoinApprover {
+    BikeCoinWhitelist public list;
     mapping(address=>uint)    public participated;
 
     uint                      public saleStartTime;
@@ -16,7 +16,7 @@ contract ElecApprover {
     using SafeMath for uint;
 
 
-    function ElecApprover( ElecWhitelist _whitelistContract,
+    function BikeCoinApprover( BikeCoinWhitelist _whitelistContract,
     uint                      _saleStartTime,
     uint                      _firstRoundTime,
     uint                      _saleEndTime ) public {
@@ -25,7 +25,7 @@ contract ElecApprover {
         firstRoundTime = _firstRoundTime;
         saleEndTime = _saleEndTime;
 
-        require( list != ElecWhitelist(0x0) );
+        require( list != BikeCoinWhitelist(0x0) );
         require( saleStartTime < firstRoundTime );
         require(  firstRoundTime < saleEndTime );
     }
